@@ -14,7 +14,7 @@ def create_snapshot():
     parable.collect_garbage()
     j = json.dumps({"symbols": parable.dictionary, \
                     "errors": parable.errors, \
-                    "stack_values": parable.stack, \
+                    "stack": parable.stack, \
                     "memory_contents": parable.memory_values, \
                     "memory_types": parable.memory_types, \
                     "memory_map": parable.memory_map, \
@@ -50,7 +50,7 @@ def bootstrap(s):
 
     parable.dictionary = j['symbols']
     parable.errors = j['errors']
-    parable.stack = j['stack_values']
+    parable.stack = j['stack']
     parable.memory_values = j['memory_contents']
     parable.memory_types = j['memory_types']
     parable.memory_map = j['memory_map']
