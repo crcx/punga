@@ -111,7 +111,7 @@ def dump_stack():
                 s = s + "<br>Pointer to: " + parable.pointer_to_name(tos)
             html = html + stack_item(i, s)
         else:
-            html = html + stack_item(i, "unmatched type on stack!")
+            html = html + stack_item(i, "unmatched type on stack!<br>(" + str(tos) + "," + str(type) + ")")
         i += 1
     html = html + "</table>"
     return html
