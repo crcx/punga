@@ -105,7 +105,7 @@ def dump_stack():
             s = "\"" + parable.slice_to_string(tos) + "\""
             s = s + "<br>Store at: " + str(tos)
             html = html + stack_item(i, s)
-        elif type == parable.TYPE_FUNCTION_CALL:
+        elif type == parable.TYPE_FUNCALL:
             s = "Call: " + str(tos)
             if parable.pointer_to_name(tos) != "":
                 s = s + "<br>Pointer to: " + parable.pointer_to_name(tos)
