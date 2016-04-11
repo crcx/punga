@@ -47,28 +47,53 @@ def is_number(s):
         return False
 
 
+def is_balanced(tokens):
+    braces = 0
+    for t in tokens:
+        if t == '[':
+            braces = braces + 1
+        if t == ']':
+            braces = braces - 1
+    if braces == 0:
+        return True
+    else:
+        return False
+
+
+def tokenize(str):
+    prefixes = { '`', '#', '$', '&', '\'', '"', '@', '!', '|' }
+    tokens = ' '.join(str.strip().split()).split(' ')
+    cleaned = []
+    i = 0
+    while i < len(tokens):
+        current = tokens[i]
+        prefix = tokens[i][:1]
+        s = ""
+        if prefix == '"':
+            i, s = parse_string(tokens, i, len(tokens), '"')
+        elif prefix == "'":
+            i, s = parse_string(tokens, i, len(tokens), '\'')
+        if s != "":
+            cleaned.append(s)
+        elif current != '':
+            cleaned.append(current)
+        i = i + 1
+    return cleaned
+
+
 def condense_lines(code):
     """Take an array of code, join lines ending with a \, and return"""
     """the new array"""
     s = ''
     r = []
-    i = 0
-    while i < len(code):
-        braces = 0
-        if code[i].endswith(' \\\n'):
-            s = s + ' ' + code[i][:-2].strip()
+    for line in code:
+        if line.endswith(' \\\n'):
+            s = s + ' ' + line[:-2].strip()
         else:
-            s = s + ' ' + code[i].strip()
-        tokens = s.split(' ')
-        for t in tokens:
-            if t == '[':
-                braces = braces + 1
-            if t == ']':
-                braces = braces - 1
-        if braces == 0:
+            s = s + ' ' + line.strip()
+        if is_balanced(tokenize(s)):
             r.append(s.strip())
             s = ''
-        i = i + 1
     return r
 
 # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -462,10 +487,9 @@ def bytecode_flow_until(opcode, offset, more):
 def bytecode_flow_times(opcode, offset, more):
     if precheck([TYPE_NUMBER, TYPE_POINTER]):
         quote = stack_pop()
-        count = stack_pop()
-        while count > 0:
+        count = int(stack_pop())
+        for i in range(0, count):
             interpret(quote, more)
-            count -= 1
     else:
         abort_run(opcode, offset)
 
@@ -985,9 +1009,7 @@ should_abort = False        # Used to indicate if an error was detected during
 def abort_run(opcode, offset):
     global should_abort
     emsg = "E__: "
-    emsg = emsg + "Error processing `" + str(opcode) + " "
-    emsg = emsg + "at offset " + str(offset) + " in slice "
-    emsg = emsg + str(current_slice)
+    emsg = emsg + "Error processing `{0} at offset {1} in slice {2}".format(opcode, offset, current_slice)
     report(emsg)
     should_abort = True
 
@@ -1086,11 +1108,9 @@ def parsed_item(i):
 
 
 def parsed_stack():
-    i = 0
     r = []
-    while i < len(stack):
-        r.append(parsed_item(a))
-        i += 1
+    for i in range(0, stack_depth()):
+        r.append(parsed_item(i))
     return r
 
 
@@ -1184,72 +1204,107 @@ def stack_dup():
         stack_push(av, at)
 
 
+def convert_to_bytecode(original):
+    global stack
+    if original == TYPE_NUMBER:
+        a = stack_pop()
+        stack_push(a, TYPE_BYTECODE)
+
+
+def convert_to_number(original):
+    global stack
+    if original == TYPE_STRING:
+        a = stack_pop()
+        if is_number(slice_to_string(a)):
+            stack_push(float(slice_to_string(a)), TYPE_NUMBER)
+        else:
+            stack_push(float('nan'), TYPE_NUMBER)
+    else:
+        a = stack_pop()
+        stack_push(a, TYPE_NUMBER)
+
+
+def convert_to_string(original):
+    global stack
+    if original == TYPE_NUMBER:
+        stack_push(string_to_slice(str(stack_pop())), TYPE_STRING)
+    elif original == TYPE_CHARACTER:
+        v = stack_pop()
+        if (v >= 32 and v <= 128) or v == 10 or v == 13:
+            stack_push(string_to_slice(str(chr(v))), TYPE_STRING)
+        else:
+            stack_push(string_to_slice(str(chr(0))), TYPE_STRING)
+    elif original == TYPE_FLAG:
+        s = stack_pop()
+        if s == -1:
+            stack_push(string_to_slice('true'), TYPE_STRING)
+        elif s == 0:
+            stack_push(string_to_slice('false'), TYPE_STRING)
+        else:
+            stack_push(string_to_slice('malformed flag'), TYPE_STRING)
+    elif original == TYPE_POINTER or original == TYPE_REMARK:
+        a = stack_pop()
+        stack_push(a, TYPE_STRING)
+    else:
+        return 0
+
+
+def convert_to_character(original):
+    global stack
+    if original == TYPE_STRING:
+        s = slice_to_string(stack_pop())
+        stack_push(ord(s[0].encode('utf-8')), TYPE_CHARACTER)
+    else:
+        s = stack_pop()
+        stack_push(int(s), TYPE_CHARACTER)
+
+
+def convert_to_pointer(original):
+    global stack
+    a = stack_pop()
+    stack_push(a, TYPE_POINTER)
+
+
+def convert_to_flag(original):
+    global stack
+    if original == TYPE_STRING:
+        s = slice_to_string(stack_pop())
+        if s == 'true':
+            stack_push(-1, TYPE_FLAG)
+        elif s == 'false':
+            stack_push(0, TYPE_FLAG)
+        else:
+            stack_push(1, TYPE_FLAG)
+    else:
+        s = stack_pop()
+        stack_push(s, TYPE_FLAG)
+
+
+def convert_to_funcall(original):
+    global stack
+    if original == TYPE_NUMBER or original == TYPE_POINTER:
+        a = stack_pop()
+        stack_push(a, TYPE_FUNCALL)
+
+
 def stack_change_type(desired):
     """convert the type of an item on the stack to a different type"""
     global stack
     original = stack_type()
     if desired == TYPE_BYTECODE:
-        if original == TYPE_NUMBER:
-            a = stack_pop()
-            stack_push(a, TYPE_BYTECODE)
+        convert_to_bytecode(original)
     elif desired == TYPE_NUMBER:
-        if original == TYPE_STRING:
-            a = stack_pop()
-            if is_number(slice_to_string(a)):
-                stack_push(float(slice_to_string(a)), TYPE_NUMBER)
-            else:
-                stack_push(float('nan'), TYPE_NUMBER)
-        else:
-            a = stack_pop()
-            stack_push(a, TYPE_NUMBER)
+        convert_to_number(original)
     elif desired == TYPE_STRING:
-        if original == TYPE_NUMBER:
-            stack_push(string_to_slice(str(stack_pop())), TYPE_STRING)
-        elif original == TYPE_CHARACTER:
-            v = stack_pop()
-            if (v >= 32 and v <= 128) or v == 10 or v == 13:
-                stack_push(string_to_slice(str(chr(v))), TYPE_STRING)
-            else:
-                stack_push(string_to_slice(str(chr(0))), TYPE_STRING)
-        elif original == TYPE_FLAG:
-            s = stack_pop()
-            if s == -1:
-                stack_push(string_to_slice('true'), TYPE_STRING)
-            elif s == 0:
-                stack_push(string_to_slice('false'), TYPE_STRING)
-            else:
-                stack_push(string_to_slice('malformed flag'), TYPE_STRING)
-        elif original == TYPE_POINTER or original == TYPE_REMARK:
-            a = stack_pop()
-            stack_push(a, TYPE_STRING)
-        else:
-            return 0
+        convert_to_string(original)
     elif desired == TYPE_CHARACTER:
-        if original == TYPE_STRING:
-            s = slice_to_string(stack_pop())
-            stack_push(ord(s[0].encode('utf-8')), TYPE_CHARACTER)
-        else:
-            s = stack_pop()
-            stack_push(int(s), TYPE_CHARACTER)
+        convert_to_character(original)
     elif desired == TYPE_POINTER:
-        a = stack_pop()
-        stack_push(a, TYPE_POINTER)
+        convert_to_pointer(original)
     elif desired == TYPE_FLAG:
-        if original == TYPE_STRING:
-            s = slice_to_string(stack_pop())
-            if s == 'true':
-                stack_push(-1, TYPE_FLAG)
-            elif s == 'false':
-                stack_push(0, TYPE_FLAG)
-            else:
-                stack_push(1, TYPE_FLAG)
-        else:
-            s = stack_pop()
-            stack_push(s, TYPE_FLAG)
+        convert_to_flag(original)
     elif desired == TYPE_FUNCALL:
-        if original == TYPE_NUMBER or original == TYPE_POINTER:
-            a = stack_pop()
-            stack_push(a, TYPE_FUNCALL)
+        convert_to_funcall(original)
     else:
         a = stack_pop()
         stack_push(a, desired)
@@ -1315,7 +1370,7 @@ def add_definition(name, slice):
         dictionary.append((name, slice))
     else:
         if dictionary_warnings:
-            report('W10: ' + name + ' redefined')
+            report('W10: {0} redefined'.format(name))
         target = lookup_pointer(name)
         copy_slice(slice, target)
 
@@ -1599,6 +1654,10 @@ def collect_garbage():
 #   `   Bytecodes
 #   '   Strings
 #   "   Comments
+#   |   Function Calls
+#
+# To aid in readability, the compiler also allows for use of number and
+# functions calls without the prefixes.
 #
 # The bytecode forms are kept simple:
 #
@@ -1622,15 +1681,17 @@ def collect_garbage():
 #   &<pointer> #1 fetch
 #   &<pointer> #1 store
 #
-# The compiler handle two implicit pieces of functionality: [ and ]. These
-# are used to begin and end quotations.
+# The compiler handle two implicit pieces of functionality: [ and ].
+# These are used to begin and end quotations.
 #
-# Bytecodes get wrapped into named functions. At this point they are not
-# inlined. This hurts performance, but makes the implementation much simpler.
+# Bytecodes get wrapped into named functions. At this point they are
+# not inlined. This hurts performance, but makes the implementation
+# much simpler.
 #
-# The compile_ functions take a parameter, a slice, and the current offset
-# in that slice. They lay down the appropriate byte codes for the type of
-# item they are compiling. When done, they return the new offset.
+# The compile_ functions take a parameter, a slice, and the current
+# offset in that slice. They lay down the appropriate byte codes
+# for the type of item they are compiling. When done, they return
+# the new offset.
 
 
 def compile_string(string, slice, offset):
@@ -1659,8 +1720,7 @@ def compile_pointer(name, slice, offset):
             store(lookup_pointer(name), slice, offset, TYPE_POINTER)
         else:
             store(0, slice, offset, TYPE_POINTER)
-            report('E03: Compile Error: Unable to map ' +
-                   name + ' to a pointer')
+            report('E03: Compile Error: Unable to map {0} to a pointer'.format(name))
     offset += 1
     return offset
 
@@ -1670,8 +1730,7 @@ def compile_number(number, slice, offset):
         store(float(number), slice, offset, TYPE_NUMBER)
     else:
         store(float('nan'), slice, offset, TYPE_NUMBER)
-        report("E03: Compile Error: Unable to convert " +
-               number + " to a number")
+        report("E03: Compile Error: Unable to convert {0} to a number".format(number))
     offset += 1
     return offset
 
@@ -1688,7 +1747,7 @@ def compile_function_call(name, slice, offset):
         offset += 1
     else:
         if name != "":
-           report('E03: Compile Error: Unable to map `' + name + '` to a pointer')
+           report('E03: Compile Error: Unable to map `{0}` to a pointer'.format(name))
     return offset
 
 
@@ -1701,7 +1760,7 @@ def compile_function_call_prefixed(name, slice, offset):
             store(int(name), slice, offset, TYPE_FUNCALL)
             offset += 1
         else:
-           report('E03: Compile Error: Unable to map `' + name + '` to a pointer')
+           report('E03: Compile Error: Unable to map `{0}` to a pointer'.format(name))
     return offset
 
 
@@ -1733,26 +1792,21 @@ def compile(str, slice):
     should_abort = False
     prefixes = { '`', '#', '$', '&', '\'', '"', '@', '!', '|' }
     nest = []
-    tokens = ' '.join(str.split()).split(' ')
-    count = len(tokens)
-    i = 0
+    tokens = tokenize(str)
     offset = 0
-    current = ""
-    prefix = ""
-    while i < count:
-        current = tokens[i]
-        prefix = tokens[i][:1]
+    if tokens == []:
+        store(BC_NOP, slice, offset, TYPE_BYTECODE)
+        return slice
+    for token in tokens:
+        prefix = token[:1]
         if prefix in prefixes:
-            current = tokens[i][1:]
+            current = token[1:]
         else:
-            current = tokens[i]
-        s = ""
+            current = token
         if prefix == '"':
-            i, s = parse_string(tokens, i, count, '"')
-            offset = compile_comment(s[1:-1], slice, offset)
+            offset = compile_comment(current[:-1], slice, offset)
         elif prefix == "'":
-            i, s = parse_string(tokens, i, count, '\'')
-            offset = compile_string(s[1:-1], slice, offset)
+            offset = compile_string(current[:-1], slice, offset)
         elif prefix == "$":
             v = ord(current[0].encode('utf-8'))
             offset = compile_character(v, slice, offset)
@@ -1773,8 +1827,7 @@ def compile(str, slice):
         elif prefix == "|":
             offset = compile_function_call_prefixed(current, slice, offset)
         elif current == "[":
-            nest.append(slice)
-            nest.append(offset)
+            nest.append((slice, offset))
             slice = request_slice()
             offset = 0
         elif current == "]":
@@ -1785,8 +1838,7 @@ def compile(str, slice):
                 old = slice
                 if offset == 0:
                     store(BC_NOP, slice, offset, TYPE_BYTECODE)
-                offset = nest.pop()
-                slice = nest.pop()
+                slice, offset = nest.pop()
                 store(old, slice, offset, TYPE_POINTER)
                 offset += 1
         else:
@@ -1794,7 +1846,6 @@ def compile(str, slice):
                 offset = compile_number(current, slice, offset)
             else:
                 offset = compile_function_call(current, slice, offset)
-        i += 1
         if offset == 0:
             store(BC_NOP, slice, offset, TYPE_BYTECODE)
     if len(nest) != 0:
@@ -1810,8 +1861,7 @@ def compile(str, slice):
 def parse_bootstrap(f):
     """compile the bootstrap package it into memory"""
     for line in condense_lines(f):
-        if len(line) > 0:
-            interpret(compile(line, request_slice()))
+        if len(line) > 0: interpret(compile(line, request_slice()))
 
 
 # some parts of the language (prefixes, brackets) are understood as part of
