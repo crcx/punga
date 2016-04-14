@@ -1011,9 +1011,8 @@ should_abort = False        # Used to indicate if an error was detected during
 
 def abort_run(opcode, offset):
     global should_abort
-    emsg = "E__: "
-    emsg = emsg + "Error processing `{0} at offset {1} in slice {2}".format(opcode, offset, current_slice)
-    report(emsg)
+    report("E05: Invalid Types or Stack Underflow")
+    report("Error processing `{0} at offset {1} in slice {2}".format(opcode, offset, current_slice))
     should_abort = True
 
 
@@ -1066,9 +1065,9 @@ def interpret(slice, more=None):
         offset += 1
     if should_abort:
         if pointer_to_name(slice) == '':
-            report('BT: &{0} #{1}'.format(slice, offset))
+            report('BT: &{0}\t#{1}'.format(slice, offset - 1))
         else:
-            report('BT: &{0} #{1}\t\t{2}'.format(slice, offset, pointer_to_name(slice)))
+            report('BT: &{0}\t#{1}\t{2}'.format(slice, offset - 1, pointer_to_name(slice)))
     current_slice = 0
 
 # -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
