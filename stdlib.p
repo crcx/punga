@@ -133,6 +133,7 @@
 [ "n-n"  [ 1 / ] [ 1 rem ] bi - "Return the smallest integer less than or equal to the starting value" ] 'floor' :
 [ "n-n"  dup floor dup-pair eq? [ drop ] [ nip 1 + ] if "Return the smallest integer greater than or equal to the starting value" ] 'ceil' :
 [ "n-n"  0.5 + floor "Round a number to the nearest integer value" ] 'round' :
+[ "nn-nn" dup-pair rem [ / floor ] dip "Divide and return floored result and remainder" ] '/rem' :
 
 
 "Slice Functions"
@@ -264,6 +265,10 @@
 [ "q-v"  0 fetch "Return the first item in a slice" ] 'head' :
 [ "q-q"  1 over length? subslice "Return the second through last items in a slice" ] 'body' :
 [ "p-v"  dup length? 1 - fetch "Return the last item in a slice" ] 'tail' :
+
+[ "p-vv"  [ head ] [ tail ] bi
+  "Return the head and tail of a slice"
+] 'decons' :
 
 [ 'Found'  'Value'  'XT'  'Source'  'Target'  'Offset' ] ::
 [ "q-"
@@ -580,8 +585,7 @@
   [ "ps-pn"
     !K !S 0 !O #nan !M
     [ match? [ @O !M ] if-true &O increment done? ] until
-    @M nan? [ 'ERROR: No key found' abort<with-error> ] if-true
-    @S @M fetch 1
+    @M nan? [ #nan :p #nan ] [ @S @M fetch 1 ] if
     "Return an offset for a key in a slice of key:value pairs"
   ] 'byKey:' :
 }
